@@ -1,21 +1,33 @@
 package com.reactiveKotlin.reactiveKotlin.service
 
 import com.reactiveKotlin.reactiveKotlin.model.User
+import com.reactiveKotlin.reactiveKotlin.repository.UserRepository
 import com.reactiveKotlin.reactiveKotlin.request.UserCreateRequest
 import com.reactiveKotlin.reactiveKotlin.request.UserUpdateRequest
+import com.reactiveKotlin.reactiveKotlin.response.PagingResponse
 import com.reactiveKotlin.reactiveKotlin.response.UserCreateResponse
 import com.reactiveKotlin.reactiveKotlin.response.UserUpdateResponse
+import kotlinx.coroutines.reactive.awaitFirst
+import kotlinx.coroutines.reactive.awaitFirstOrElse
+import kotlinx.coroutines.reactive.awaitFirstOrNull
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.web.server.ResponseStatusException
 
 @Service
-class UserServiceImpl : UserService  {
-    override fun makeUserCreateRequest(request: UserCreateRequest) : User{
-        return User(
-            id = null,
+class UserServiceImpl(val userRepo : UserRepository) : UserService  {
+    override suspend fun makeUserCreateRequest(request: UserCreateRequest) : User{
+        val existingUser =  userRepo.findByEmail(request.email).awaitFirstOrNull()
+        if(existingUser != null){
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate user")
+        }
+        val user = User( id = null,
             email = request.email,
             firstName = request.firstName,
-            lastName = request.lastName
-        )
+            lastName = request.lastName)
+
+        userRepo.save(user).awaitFirstOrNull()
+        return user
     }
 
     override fun makeUserCreateResponse(user: User): UserCreateResponse {
@@ -26,13 +38,16 @@ class UserServiceImpl : UserService  {
             lastName = user.lastName
         )
     }
-    override fun makeUserUpdateRequest(request: UserUpdateRequest, userInput : User) : User{
-        return User(
-            id = null,
-            email = request.email,
-            firstName = request.firstName!! ,
-            lastName = request.lastName!!
-        )
+    override suspend fun makeUserUpdateRequest(request: UserUpdateRequest, idUser : Int) : User{
+        val existingDBUser = userRepo.findById(idUser).awaitFirstOrElse {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "User #${idUser} doesn't exist")
+        }
+        existingDBUser.email = request.email
+        existingDBUser.firstName = request.firstName!!
+        existingDBUser.lastName = request.lastName!!
+
+        userRepo.save(existingDBUser).awaitFirst()
+        return existingDBUser
     }
 
     override fun makeUserUpdateResponse(user: User): UserUpdateResponse {
@@ -43,4 +58,28 @@ class UserServiceImpl : UserService  {
             lastName = user.lastName
         )
     }
+
+    override suspend fun getAllUsers(pageNumber: Int, pageSize: Int): PagingResponse<User> {
+        val limit = pageSize
+        val offset = (limit * pageNumber) - limit
+        val list = userRepo.findAllUsers(limit, offset).collectList().awaitFirst()
+        val total = userRepo.count().awaitFirst()
+        return PagingResponse(total, list)
+    }
+
+    override suspend fun deleteUserFromId(idUser: Int) {
+        val existingUser = userRepo.findById(idUser).awaitFirstOrElse {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "User #$idUser doesn't exist")
+        }
+        userRepo.delete(existingUser).subscribe()
+    }
+
+    override suspend fun getUserFromId(idUser: Int) : User{
+        val existingUser = userRepo.findById(idUser).awaitFirstOrElse {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "User #$idUser doesn't exist")
+        }
+        return existingUser
+    }
+
+
 }
