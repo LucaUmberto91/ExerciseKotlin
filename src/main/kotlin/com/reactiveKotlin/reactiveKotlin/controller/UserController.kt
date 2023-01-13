@@ -41,8 +41,8 @@ class UserController(val userService: UserService) {
 
     @GetMapping("")
     suspend fun listUsers(
-        @RequestParam pageNo: Int = 1,
-        @RequestParam pageSize: Int = 10
+        @RequestParam(value = "pageNo") pageNo: Int,
+        @RequestParam(value = "pageSize") pageSize: Int
     ): PagingResponse<User> {
         return userService.getAllUsers(pageNo,pageSize)
     }

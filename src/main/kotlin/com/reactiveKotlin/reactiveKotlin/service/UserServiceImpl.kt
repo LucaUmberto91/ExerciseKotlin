@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class UserServiceImpl(val userRepo : UserRepository) : UserService  {
-    override suspend fun makeUserCreateRequest(request: UserCreateRequest) : User{
+    /*override suspend fun makeUserCreateRequest(request: UserCreateRequest) : User{
         val existingUser =  userRepo.findByEmail(request.email).awaitFirstOrNull()
         if(existingUser != null){
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate user")
@@ -28,7 +28,22 @@ class UserServiceImpl(val userRepo : UserRepository) : UserService  {
 
         userRepo.save(user).awaitFirstOrNull()
         return user
-    }
+    }*/
+
+    override suspend fun makeUserCreateRequest(request: UserCreateRequest) : User =
+        userRepo.findByEmail(request.email).awaitFirstOrNull()?.let {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate user")
+        } ?: run {
+            val user = User(
+                id = null,
+                email = request.email,
+                firstName = request.firstName,
+                lastName = request.lastName
+            )
+            userRepo.save(user).awaitFirstOrNull()
+            return user
+        }
+
 
     override fun makeUserCreateResponse(user: User): UserCreateResponse {
         return UserCreateResponse(
@@ -38,7 +53,7 @@ class UserServiceImpl(val userRepo : UserRepository) : UserService  {
             lastName = user.lastName
         )
     }
-    override suspend fun makeUserUpdateRequest(request: UserUpdateRequest, idUser : Int) : User{
+   /* override suspend fun makeUserUpdateRequest(request: UserUpdateRequest, idUser : Int) : User{
         val existingDBUser = userRepo.findById(idUser).awaitFirstOrElse {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "User #${idUser} doesn't exist")
         }
@@ -48,7 +63,16 @@ class UserServiceImpl(val userRepo : UserRepository) : UserService  {
 
         userRepo.save(existingDBUser).awaitFirst()
         return existingDBUser
-    }
+    }*/
+
+    override suspend fun makeUserUpdateRequest(request: UserUpdateRequest, idUser : Int) : User =
+        userRepo.findById(idUser).awaitFirstOrElse {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "User #${idUser} doesn't exist")
+        }.apply {
+            email = request.email
+            firstName = request.firstName!!
+            lastName = request.lastName!!
+        }.also { userRepo.save(it).awaitFirst() }
 
     override fun makeUserUpdateResponse(user: User): UserUpdateResponse {
         return UserUpdateResponse(
